@@ -1,0 +1,816 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title> — Security Topology</title>
+<script src="https://unpkg.com/vis-network/standalone/umd/vis-network.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', monospace; background: #0a0e1a; color: #c9d1d9; }
+.header { background: linear-gradient(135deg, #161b22 0%, #0d1117 100%); padding: 1.5rem 2rem; border-bottom: 1px solid #f0883e; }
+.header h1 { color: #f0883e; font-size: 1.4rem; }
+.header .sub { color: #8b949e; font-size: 0.85rem; margin-top: 0.3rem; }
+.stats-bar { display: flex; gap: 2rem; padding: 1rem 2rem; background: #161b22; border-bottom: 1px solid #21262d; }
+.stat-card { text-align: center; }
+.stat-card .num { font-size: 1.8rem; font-weight: 700; }
+.stat-card .label { font-size: 0.7rem; color: #8b949e; text-transform: uppercase; letter-spacing: 0.05em; }
+.stat-card .num.custom { color: #f0883e; }
+.stat-card .num.msgs { color: #3fb950; }
+.stat-card .num.stores { color: #a371f7; }
+.stat-card .num.sdk { color: #58a6ff; }
+.layout { display: grid; grid-template-columns: 1fr 1fr; gap: 0; min-height: calc(100vh - 140px); }
+.panel { padding: 1.5rem; border-right: 1px solid #21262d; overflow-y: auto; }
+.panel:last-child { border-right: none; }
+.panel h2 { color: #f0883e; font-size: 1rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #21262d; }
+#dep-graph { width: 100%; height: 350px; background: #0d1117; border-radius: 8px; border: 1px solid #21262d; margin-bottom: 1.5rem; }
+.module-card { background: #161b22; border: 1px solid #21262d; border-radius: 8px; margin-bottom: 1rem; overflow: hidden; }
+.mc-header { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; background: #1c2128; border-bottom: 1px solid #21262d; }
+.mc-header h3 { color: #f0883e; font-size: 0.95rem; }
+.mc-stats { display: flex; gap: 0.75rem; }
+.mc-stats .stat { font-size: 0.7rem; color: #8b949e; }
+.mc-section { padding: 0.75rem 1rem; border-bottom: 1px solid #21262d; }
+.mc-section:last-child { border-bottom: none; }
+.mc-section h4 { color: #8b949e; font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+.entry-point { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.8rem; }
+.ep-type { padding: 0.1rem 0.4rem; border-radius: 3px; font-size: 0.6rem; font-weight: 700; }
+.ep-type.msg { background: #3fb95020; color: #3fb950; }
+.ep-name { color: #c9d1d9; font-weight: 600; }
+.ep-fields { color: #8b949e; font-size: 0.75rem; }
+.ep-loc { color: #484f58; font-size: 0.7rem; margin-left: auto; }
+.state-key { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.8rem; }
+.sk-prefix { color: #a371f7; font-family: monospace; font-size: 0.75rem; background: #a371f710; padding: 0.1rem 0.3rem; border-radius: 3px; }
+.sk-name { color: #c9d1d9; }
+.sk-loc { color: #484f58; font-size: 0.7rem; margin-left: auto; }
+.hook-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem; background: #da363420; color: #f85149; margin-right: 0.3rem; }
+.dep-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem; background: #58a6ff20; color: #58a6ff; margin-right: 0.3rem; }
+.order-tag { display: inline-block; padding: 0.15rem 0.5rem; border-radius: 3px; font-size: 0.7rem; background: #f0883e20; color: #f0883e; }
+.none { color: #484f58; font-size: 0.75rem; font-style: italic; }
+.section { margin-bottom: 1.5rem; }
+.section h2 { color: #f0883e; font-size: 1rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #21262d; }
+.ante-step { display: flex; align-items: center; gap: 0.5rem; padding: 0.3rem 0; font-size: 0.8rem; }
+.ante-num { color: #f0883e; font-weight: 700; min-width: 1.5rem; }
+.ante-name { color: #c9d1d9; }
+.ante-loc { color: #484f58; font-size: 0.7rem; margin-left: auto; }
+.full-width { grid-column: 1 / -1; padding: 1.5rem 2rem; }
+.legend { display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.75rem; }
+.legend-item { display: flex; align-items: center; gap: 0.3rem; }
+.legend-dot { width: 10px; height: 10px; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div class="header">
+    <h1>&#x1f6e1;  — Security Topology</h1>
+    <div class="sub">Cosmos SDK v0.50.12 | 30 modules | 25 messages | 9 state stores</div>
+</div>
+<div class="stats-bar">
+    <div class="stat-card"><div class="num custom">9</div><div class="label">Custom Modules</div></div>
+    <div class="stat-card"><div class="num sdk">18</div><div class="label">SDK Modules</div></div>
+    <div class="stat-card"><div class="num msgs">25</div><div class="label">Messages</div></div>
+    <div class="stat-card"><div class="num stores">9</div><div class="label">State Stores</div></div>
+    <div class="stat-card"><div class="num" style="color:#f85149">0</div><div class="label">Ante Steps</div></div>
+</div>
+
+<div class="layout">
+    <div class="panel">
+        <div class="section">
+            <h2>Keeper Dependency Graph</h2>
+            <div class="legend">
+                <div class="legend-item"><div class="legend-dot" style="background:#f0883e"></div> Custom</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#64748b"></div> SDK</div>
+                <div class="legend-item"><div class="legend-dot" style="background:#a78bfa"></div> Override</div>
+            </div>
+            <div id="dep-graph"></div>
+        </div>
+        <div class="section">
+            <h2>ABCI Execution Order</h2>
+            <h4 style="color:#8b949e;font-size:0.7rem;margin-bottom:0.5rem">BeginBlock Order</h4>
+            <div style="margin-bottom:1rem"><span class="order-tag">upgradetypes.ModuleName</span> → <span class="order-tag">capabilitytypes.ModuleName</span> → <span class="order-tag">minttypes.ModuleName</span> → <span class="order-tag">incentivetypes.ModuleName</span> → <span class="order-tag">distrtypes.ModuleName</span> → <span class="order-tag">slashingtypes.ModuleName</span> → <span class="order-tag">evidencetypes.ModuleName</span> → <span class="order-tag">stakingtypes.ModuleName</span> → <span class="order-tag">authtypes.ModuleName</span> → <span class="order-tag">banktypes.ModuleName</span> → <span class="order-tag">govtypes.ModuleName</span> → <span class="order-tag">crisistypes.ModuleName</span> → <span class="order-tag">genutiltypes.ModuleName</span> → <span class="order-tag">authz.ModuleName</span> → <span class="order-tag">feegrant.ModuleName</span> → <span class="order-tag">paramstypes.ModuleName</span> → <span class="order-tag">vestingtypes.ModuleName</span> → <span class="order-tag">consensusparamtypes.ModuleName</span> → <span class="order-tag">circuittypes.ModuleName</span> → <span class="order-tag">tokenfactorytypes.ModuleName</span> → <span class="order-tag">epochingtypes.ModuleName</span> → <span class="order-tag">btclightclienttypes.ModuleName</span> → <span class="order-tag">btccheckpointtypes.ModuleName</span> → <span class="order-tag">checkpointingtypes.ModuleName</span> → <span class="order-tag">monitortypes.ModuleName</span> → <span class="order-tag">ibcexported.ModuleName</span> → <span class="order-tag">ibcwasmtypes.ModuleName</span> → <span class="order-tag">ibctransfertypes.ModuleName</span> → <span class="order-tag">wasmtypes.ModuleName</span> → <span class="order-tag">ratelimittypes.ModuleName</span> → <span class="order-tag">btcstakingtypes.ModuleName</span> → <span class="order-tag">finalitytypes.ModuleName</span></div>
+            <h4 style="color:#8b949e;font-size:0.7rem;margin-bottom:0.5rem">EndBlock Order</h4>
+            <div style="margin-bottom:1rem"><span class="order-tag">crisistypes.ModuleName</span> → <span class="order-tag">govtypes.ModuleName</span> → <span class="order-tag">stakingtypes.ModuleName</span> → <span class="order-tag">capabilitytypes.ModuleName</span> → <span class="order-tag">authtypes.ModuleName</span> → <span class="order-tag">banktypes.ModuleName</span> → <span class="order-tag">distrtypes.ModuleName</span> → <span class="order-tag">slashingtypes.ModuleName</span> → <span class="order-tag">minttypes.ModuleName</span> → <span class="order-tag">genutiltypes.ModuleName</span> → <span class="order-tag">evidencetypes.ModuleName</span> → <span class="order-tag">authz.ModuleName</span> → <span class="order-tag">feegrant.ModuleName</span> → <span class="order-tag">paramstypes.ModuleName</span> → <span class="order-tag">upgradetypes.ModuleName</span> → <span class="order-tag">vestingtypes.ModuleName</span> → <span class="order-tag">consensusparamtypes.ModuleName</span> → <span class="order-tag">tokenfactorytypes.ModuleName</span> → <span class="order-tag">epochingtypes.ModuleName</span> → <span class="order-tag">btclightclienttypes.ModuleName</span> → <span class="order-tag">btccheckpointtypes.ModuleName</span> → <span class="order-tag">checkpointingtypes.ModuleName</span> → <span class="order-tag">monitortypes.ModuleName</span> → <span class="order-tag">ibcexported.ModuleName</span> → <span class="order-tag">ibcwasmtypes.ModuleName</span> → <span class="order-tag">ibctransfertypes.ModuleName</span> → <span class="order-tag">wasmtypes.ModuleName</span> → <span class="order-tag">ratelimittypes.ModuleName</span> → <span class="order-tag">btcstakingtypes.ModuleName</span> → <span class="order-tag">finalitytypes.ModuleName</span> → <span class="order-tag">incentivetypes.ModuleName</span></div>
+        </div>
+        <div class="section">
+            <h2>Ante Handler Chain</h2>
+            <div class="none">No ante chain data</div>
+        </div>
+    </div>
+
+    <div class="panel">
+        <h2>Custom Module Attack Surface</h2>
+        
+        <div class="module-card" id="mod-mint">
+            <div class="mc-header">
+                <h3>mint</h3>
+                <div class="mc-stats">
+                    <span class="stat">0 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="none">No messages</div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">MinterKey</span>
+                <span class="sk-loc">mint/types/keys.go:6</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">reservedKey</span>
+                <span class="sk-loc">mint/types/keys.go:8</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">GenesisTimeKey</span>
+                <span class="sk-loc">mint/types/keys.go:9</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">mint/types/keys.go:17</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-btcstaking">
+            <div class="mc-header">
+                <h3>btcstaking</h3>
+                <div class="mc-stats">
+                    <span class="stat">8 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">CreateFinalityProvider</span>
+                <span class="ep-fields">(addr, description, btc_pk, (gogoproto.customtype), pop (+2))</span>
+                <span class="ep-loc">tx.proto:46</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">EditFinalityProvider</span>
+                <span class="ep-fields">(addr, btc_pk, description, commission,  (+1))</span>
+                <span class="ep-loc">tx.proto:107</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">CreateBTCDelegation</span>
+                <span class="ep-fields">(staker_addr, pop, btc_pk, (gogoproto.customtype), fp_btc_pk_list (+14))</span>
+                <span class="ep-loc">tx.proto:126</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">AddBTCDelegationInclusionProof</span>
+                <span class="ep-fields">(signer, staking_tx_hash, staking_tx_inclusion_proof)</span>
+                <span class="ep-loc">tx.proto:192</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">AddCovenantSigs</span>
+                <span class="ep-fields">(signer, pk, staking_tx_hash, slashing_tx_sigs, unbonding_tx_sig (+2))</span>
+                <span class="ep-loc">tx.proto:209</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">BTCUndelegate</span>
+                <span class="ep-fields">(signer, staking_tx_hash, stake_spending_tx, stake_spending_tx_inclusion_proof, funding_transactions)</span>
+                <span class="ep-loc">tx.proto:240</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">SelectiveSlashingEvidence</span>
+                <span class="ep-fields">(signer, staking_tx_hash, recovered_fp_btc_sk)</span>
+                <span class="ep-loc">tx.proto:262</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">UpdateParams</span>
+                <span class="ep-fields">(authority, params)</span>
+                <span class="ep-loc">tx.proto:280</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:10</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:13</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_btcstaking</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:16</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ParamsKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:20</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">FinalityProviderKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:21</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BTCDelegatorKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:22</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BTCDelegationKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:23</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BTCHeightKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:25</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">PowerDistUpdateKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:27</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">AllowedStakingTxHashesKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:28</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">HeightToVersionMapKey</span>
+                <span class="sk-loc">btcstaking/types/keys.go:29</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-btccheckpoint">
+            <div class="mc-header">
+                <h3>btccheckpoint</h3>
+                <div class="mc-stats">
+                    <span class="stat">2 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">InsertBTCSpvProof</span>
+                <span class="ep-fields">(submitter, proofs)</span>
+                <span class="ep-loc">tx.proto:26</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">UpdateParams</span>
+                <span class="ep-fields">(authority, params)</span>
+                <span class="ep-loc">tx.proto:38</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:13</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:16</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">transient_btccheckpoint</span>
+                <span class="sk-name">TStoreKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:21</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_btccheckpoint</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:24</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">latestFinalizedEpoch</span>
+                <span class="sk-name">LatestFinalizedEpochKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:26</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">SubmisionKeyPrefix</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:32</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">EpochDataPrefix</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:33</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">LastFinalizedEpochKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:34</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BtcLightClientUpdatedKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:35</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ParamsKey</span>
+                <span class="sk-loc">btccheckpoint/types/keys.go:36</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-btclightclient">
+            <div class="mc-header">
+                <h3>btclightclient</h3>
+                <div class="mc-stats">
+                    <span class="stat">2 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">InsertHeaders</span>
+                <span class="ep-fields">(signer, headers, (gogoproto.customtype))</span>
+                <span class="ep-loc">tx.proto:23</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">UpdateParams</span>
+                <span class="ep-fields">(authority, params)</span>
+                <span class="ep-loc">tx.proto:35</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">btclightclient/types/keys.go:13</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">btclightclient/types/keys.go:16</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_btclightclient</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">btclightclient/types/keys.go:22</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">HeadersObjectPrefix</span>
+                <span class="sk-loc">btclightclient/types/keys.go:26</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">HashToHeightPrefix</span>
+                <span class="sk-loc">btclightclient/types/keys.go:27</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ParamsKey</span>
+                <span class="sk-loc">btclightclient/types/keys.go:28</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-finality">
+            <div class="mc-header">
+                <h3>finality</h3>
+                <div class="mc-stats">
+                    <span class="stat">5 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">CommitPubRandList</span>
+                <span class="ep-fields">(signer, fp_btc_pk, start_height, num_pub_rand, commitment (+1))</span>
+                <span class="ep-loc">tx.proto:31</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">AddFinalitySig</span>
+                <span class="ep-fields">(signer, fp_btc_pk, block_height, pub_rand, proof (+2))</span>
+                <span class="ep-loc">tx.proto:55</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">UpdateParams</span>
+                <span class="ep-fields">(authority, params)</span>
+                <span class="ep-loc">tx.proto:79</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">UnjailFinalityProvider</span>
+                <span class="ep-fields">(signer, fp_btc_pk)</span>
+                <span class="ep-loc">tx.proto:97</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">ResumeFinalityProposal</span>
+                <span class="ep-fields">(authority, fp_pks_hex, halting_height)</span>
+                <span class="ep-loc">tx.proto:110</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">finality/types/keys.go:12</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">finality/types/keys.go:15</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_finality</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">finality/types/keys.go:18</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BlockKey</span>
+                <span class="sk-loc">finality/types/keys.go:41</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">VoteKey</span>
+                <span class="sk-loc">finality/types/keys.go:42</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">PubRandKey</span>
+                <span class="sk-loc">finality/types/keys.go:43</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">PubRandCommitKey</span>
+                <span class="sk-loc">finality/types/keys.go:44</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ParamsKey</span>
+                <span class="sk-loc">finality/types/keys.go:45</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">EvidenceKey</span>
+                <span class="sk-loc">finality/types/keys.go:46</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">NextHeightToFinalizeKey</span>
+                <span class="sk-loc">finality/types/keys.go:47</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">FinalityProviderSigningInfoKeyPrefix</span>
+                <span class="sk-loc">finality/types/keys.go:48</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">FinalityProviderMissedBlockBitmapKeyPrefix</span>
+                <span class="sk-loc">finality/types/keys.go:49</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">VotingPowerKey</span>
+                <span class="sk-loc">finality/types/keys.go:50</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">VotingPowerDistCacheKey</span>
+                <span class="sk-loc">finality/types/keys.go:51</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">NextHeightToRewardKey</span>
+                <span class="sk-loc">finality/types/keys.go:52</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-epoching">
+            <div class="mc-header">
+                <h3>epoching</h3>
+                <div class="mc-stats">
+                    <span class="stat">7 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">WrappedDelegate</span>
+                <span class="ep-fields">(msg)</span>
+                <span class="ep-loc">tx.proto:51</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">WrappedUndelegate</span>
+                <span class="ep-fields">(msg)</span>
+                <span class="ep-loc">tx.proto:63</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">WrappedBeginRedelegate</span>
+                <span class="ep-fields">(msg)</span>
+                <span class="ep-loc">tx.proto:77</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">WrappedCancelUnbondingDelegation</span>
+                <span class="ep-fields">(msg)</span>
+                <span class="ep-loc">tx.proto:91</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">WrappedEditValidator</span>
+                <span class="ep-fields">(msg)</span>
+                <span class="ep-loc">tx.proto:105</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">WrappedStakingUpdateParams</span>
+                <span class="ep-fields">(msg)</span>
+                <span class="ep-loc">tx.proto:117</span>
+            </div><div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">UpdateParams</span>
+                <span class="ep-fields">(authority, params)</span>
+                <span class="ep-loc">tx.proto:129</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">epoching/types/keys.go:8</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">epoching/types/keys.go:11</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_epoching</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">epoching/types/keys.go:17</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">EpochInfoKey</span>
+                <span class="sk-loc">epoching/types/keys.go:21</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">QueueLengthKey</span>
+                <span class="sk-loc">epoching/types/keys.go:22</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">MsgQueueKey</span>
+                <span class="sk-loc">epoching/types/keys.go:23</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ValidatorSetKey</span>
+                <span class="sk-loc">epoching/types/keys.go:24</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">VotingPowerKey</span>
+                <span class="sk-loc">epoching/types/keys.go:25</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">SlashedVotingPowerKey</span>
+                <span class="sk-loc">epoching/types/keys.go:26</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">SlashedValidatorSetKey</span>
+                <span class="sk-loc">epoching/types/keys.go:27</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ValidatorLifecycleKey</span>
+                <span class="sk-loc">epoching/types/keys.go:28</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">DelegationLifecycleKey</span>
+                <span class="sk-loc">epoching/types/keys.go:29</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ParamsKey</span>
+                <span class="sk-loc">epoching/types/keys.go:30</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-checkpointing">
+            <div class="mc-header">
+                <h3>checkpointing</h3>
+                <div class="mc-stats">
+                    <span class="stat">1 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="entry-point">
+                <span class="ep-type msg">MSG</span>
+                <span class="ep-name">WrappedCreateValidator</span>
+                <span class="ep-fields">(key, msg_create_validator)</span>
+                <span class="ep-loc">tx.proto:21</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">checkpointing/types/keys.go:13</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">checkpointing/types/keys.go:16</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_checkpointing</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">checkpointing/types/keys.go:22</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">CheckpointsPrefix</span>
+                <span class="sk-loc">checkpointing/types/keys.go:26</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RegistrationPrefix</span>
+                <span class="sk-loc">checkpointing/types/keys.go:27</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ValidatorBlsKeySetPrefix</span>
+                <span class="sk-loc">checkpointing/types/keys.go:28</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">CkptsObjectPrefix</span>
+                <span class="sk-loc">checkpointing/types/keys.go:30</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">AddrToBlsKeyPrefix</span>
+                <span class="sk-loc">checkpointing/types/keys.go:32</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BlsKeyToAddrPrefix</span>
+                <span class="sk-loc">checkpointing/types/keys.go:33</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">LastFinalizedEpochKey</span>
+                <span class="sk-loc">checkpointing/types/keys.go:35</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ConflictingCheckpointReceivedKey</span>
+                <span class="sk-loc">checkpointing/types/keys.go:36</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-incentive">
+            <div class="mc-header">
+                <h3>incentive</h3>
+                <div class="mc-stats">
+                    <span class="stat">0 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="none">No messages</div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">incentive/types/keys.go:14</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">incentive/types/keys.go:17</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_incentive</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">incentive/types/keys.go:20</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">ParamsKey</span>
+                <span class="sk-loc">incentive/types/keys.go:24</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BTCStakingGaugeKey</span>
+                <span class="sk-loc">incentive/types/keys.go:25</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">DelegatorWithdrawAddrPrefix</span>
+                <span class="sk-loc">incentive/types/keys.go:26</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RewardGaugeKey</span>
+                <span class="sk-loc">incentive/types/keys.go:27</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RefundableMsgKeySetPrefix</span>
+                <span class="sk-loc">incentive/types/keys.go:28</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">FinalityProviderCurrentRewardsKeyPrefix</span>
+                <span class="sk-loc">incentive/types/keys.go:29</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">FinalityProviderHistoricalRewardsKeyPrefix</span>
+                <span class="sk-loc">incentive/types/keys.go:30</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BTCDelegationRewardsTrackerKeyPrefix</span>
+                <span class="sk-loc">incentive/types/keys.go:31</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">BTCDelegatorToFPKey</span>
+                <span class="sk-loc">incentive/types/keys.go:32</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+        <div class="module-card" id="mod-monitor">
+            <div class="mc-header">
+                <h3>monitor</h3>
+                <div class="mc-stats">
+                    <span class="stat">0 msgs</span>
+                    <span class="stat">1 stores</span>
+                </div>
+            </div>
+            <div class="mc-section">
+                <h4>Entry Points (Attack Surface)</h4>
+                <div class="none">No messages</div>
+            </div>
+            <div class="mc-section">
+                <h4>State Keys</h4>
+                <div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">StoreKey</span>
+                <span class="sk-loc">monitor/types/keys.go:14</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">RouterKey</span>
+                <span class="sk-loc">monitor/types/keys.go:17</span>
+            </div><div class="state-key">
+                <span class="sk-prefix">mem_monitor</span>
+                <span class="sk-name">MemStoreKey</span>
+                <span class="sk-loc">monitor/types/keys.go:23</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">EpochEndLightClientHeightPrefix</span>
+                <span class="sk-loc">monitor/types/keys.go:27</span>
+            </div><div class="state-key">
+                <span class="sk-prefix"></span>
+                <span class="sk-name">CheckpointReportedLightClientHeightPrefix</span>
+                <span class="sk-loc">monitor/types/keys.go:28</span>
+            </div>
+            </div>
+            <div class="mc-section">
+                <h4>ABCI Hooks (Consensus-Critical)</h4>
+                <span class="none">none</span>
+            </div>
+            <div class="mc-section">
+                <h4>Keeper Dependencies</h4>
+                <span class="none">none</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+var nodes = new vis.DataSet([{"id": "mint", "label": "mint", "color": "#38bdf8", "size": 20, "title": "mint (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "evidence", "label": "evidence", "color": "#64748b", "size": 20, "title": "evidence (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "authz", "label": "authz", "color": "#64748b", "size": 20, "title": "authz (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "consensusparam", "label": "consensusparam", "color": "#64748b", "size": 20, "title": "consensusparam (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "btcstaking", "label": "btcstaking", "color": "#38bdf8", "size": 20, "title": "btcstaking (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "genesisModuleOrder", "label": "genesisModuleOrder", "color": "#64748b", "size": 20, "title": "genesisModuleOrder (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "staking", "label": "staking", "color": "#64748b", "size": 20, "title": "staking (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "auth", "label": "auth", "color": "#64748b", "size": 20, "title": "auth (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "feegrant", "label": "feegrant", "color": "#64748b", "size": 20, "title": "feegrant (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "btccheckpoint", "label": "btccheckpoint", "color": "#38bdf8", "size": 20, "title": "btccheckpoint (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "capability", "label": "capability", "color": "#64748b", "size": 20, "title": "capability (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "bank", "label": "bank", "color": "#64748b", "size": 20, "title": "bank (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "genutil", "label": "genutil", "color": "#64748b", "size": 20, "title": "genutil (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "btclightclient", "label": "btclightclient", "color": "#38bdf8", "size": 20, "title": "btclightclient (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "finality", "label": "finality", "color": "#38bdf8", "size": 20, "title": "finality (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "gov", "label": "gov", "color": "#64748b", "size": 20, "title": "gov (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "vesting", "label": "vesting", "color": "#64748b", "size": 20, "title": "vesting (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "ibcexported", "label": "ibcexported", "color": "#a78bfa", "size": 20, "title": "ibcexported (SDK_OVERRIDE)\nMsgs: 0\nStores: 0"}, {"id": "upgrade", "label": "upgrade", "color": "#64748b", "size": 20, "title": "upgrade (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "epoching", "label": "epoching", "color": "#38bdf8", "size": 20, "title": "epoching (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "ibctransfer", "label": "ibctransfer", "color": "#a78bfa", "size": 20, "title": "ibctransfer (SDK_OVERRIDE)\nMsgs: 0\nStores: 0"}, {"id": "slashing", "label": "slashing", "color": "#64748b", "size": 20, "title": "slashing (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "crisis", "label": "crisis", "color": "#64748b", "size": 20, "title": "crisis (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "circuit", "label": "circuit", "color": "#64748b", "size": 20, "title": "circuit (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "checkpointing", "label": "checkpointing", "color": "#38bdf8", "size": 20, "title": "checkpointing (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "incentive", "label": "incentive", "color": "#38bdf8", "size": 20, "title": "incentive (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "params", "label": "params", "color": "#64748b", "size": 20, "title": "params (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "monitor", "label": "monitor", "color": "#38bdf8", "size": 20, "title": "monitor (CUSTOM)\nMsgs: 0\nStores: 0"}, {"id": "distr", "label": "distr", "color": "#64748b", "size": 20, "title": "distr (SDK_STANDARD)\nMsgs: 0\nStores: 0"}, {"id": "ibcwasm", "label": "ibcwasm", "color": "#a78bfa", "size": 20, "title": "ibcwasm (SDK_OVERRIDE)\nMsgs: 0\nStores: 0"}]);
+var edges = new vis.DataSet([]);
+var container = document.getElementById('dep-graph');
+var data = { nodes: nodes, edges: edges };
+var options = {
+    physics: { solver: 'forceAtlas2Based', forceAtlas2Based: { gravitationalConstant: -50, springLength: 100 } },
+    nodes: { shape: 'dot', font: { color: '#c9d1d9', size: 11 }, borderWidth: 0 },
+    edges: { color: { color: '#21262d', highlight: '#f0883e' }, smooth: { type: 'continuous' } },
+    interaction: { hover: true, tooltipDelay: 100 },
+    layout: { improvedLayout: true }
+};
+new vis.Network(container, data, options);
+</script>
+</body>
+</html>
